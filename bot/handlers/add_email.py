@@ -280,23 +280,13 @@ Use /my_emails to see all your email addresses.
 
 async def cancel_email_creation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Cancel email creation or payment process
+    Cancel email creation conversation
     """
-    # Check if canceling payment or email creation
-    if context.user_data.get('pending_payment'):
-        await update.message.reply_text(
-            "❌ Payment cancelled.\n\n"
-            "Use /credits to try again.",
-            parse_mode="HTML"
-        )
-        logger.info(f"User {update.effective_user.id} cancelled payment")
-    else:
-        await update.message.reply_text(
-            "❌ Email creation cancelled.\n\n"
-            "Use /add_email to try again.",
-            parse_mode="HTML"
-        )
-        logger.info(f"User {update.effective_user.id} cancelled email creation")
-    
+    await update.message.reply_text(
+        "❌ Email creation cancelled.\n\n"
+        "Use /add_email to try again.",
+        parse_mode="HTML"
+    )
+    logger.info(f"User {update.effective_user.id} cancelled email creation")
     context.user_data.clear()
     return ConversationHandler.END

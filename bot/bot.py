@@ -23,7 +23,8 @@ from bot.handlers import (
     help_command,
     handle_payment_callback,
     handle_photo,
-    handle_admin_callback
+    handle_admin_callback,
+    cancel_payment
 )
 import logging
 
@@ -43,9 +44,6 @@ def create_bot_application():
     application.add_handler(CommandHandler("my_emails", my_emails_command))
     application.add_handler(CommandHandler("help", help_command))
     
-    # Global cancel handler (for payment cancellation outside conversation)
-    application.add_handler(CommandHandler("cancel", cancel_email_creation))
-    
     # Conversation handler for /add_email
     add_email_conv = ConversationHandler(
         entry_points=[CommandHandler("add_email", add_email_command)],
@@ -55,8 +53,14 @@ def create_bot_application():
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel_email_creation)],
+        per_user=True,  # Track conversation state per user
+        per_chat=True,
+        allow_reentry=True  # Allow user to start /add_email again after cancel
     )
     application.add_handler(add_email_conv)
+    
+    # Cancel handler for payment (outside conversation) - must come AFTER conversation handler
+    application.add_handler(CommandHandler("cancel", cancel_payment))
     
     # Callback query handlers
     application.add_handler(CallbackQueryHandler(

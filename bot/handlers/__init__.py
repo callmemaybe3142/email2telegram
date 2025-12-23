@@ -10,6 +10,7 @@ from .my_emails import my_emails_command
 from .help import help_command
 from .payment import handle_payment_callback, handle_photo
 from .admin import handle_admin_callback
+from .cancel import cancel_payment
 
 __all__ = [
     'start_command',
@@ -22,6 +23,7 @@ __all__ = [
     'help_command',
     'handle_payment_callback',
     'handle_photo',
-    'handle_admin_callback'
+    'handle_admin_callback',
+    'cancel_payment'
 ]
 
