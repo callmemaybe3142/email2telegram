@@ -1,0 +1,9 @@
+fastapi[standard]
+mail-parser
+uvicorn
+python-telegram-bot
+python-dotenv
+sqlalchemy[asyncio]
+aiosqlite
+
+
