@@ -47,11 +47,18 @@ async def lifespan(app: FastAPI):
     # Shutdown: Stop Telegram bot
     logger.info("Stopping Telegram bot...")
     try:
-        if bot_app.updater.running:
-            await bot_app.updater.stop()
-        await bot_app.stop()
-        await bot_app.shutdown()
+        # Set a timeout for shutdown
+        async def shutdown_with_timeout():
+            if bot_app.updater.running:
+                await bot_app.updater.stop()
+            await bot_app.stop()
+            await bot_app.shutdown()
+        
+        # Wait max 5 seconds for shutdown
+        await asyncio.wait_for(shutdown_with_timeout(), timeout=5.0)
         logger.info("✅ Telegram bot stopped")
+    except asyncio.TimeoutError:
+        logger.warning("⚠️ Bot shutdown timed out, forcing exit")
     except Exception as e:
         logger.error(f"Error stopping bot: {e}")
 
@@ -190,9 +197,16 @@ if __name__ == "__main__":
     logger.info("Starting Email2Telegram Service...")
     logger.info(f"FastAPI server: http://{FASTAPI_HOST}:{FASTAPI_PORT}")
     
-    uvicorn.run(
-        app,
-        host=FASTAPI_HOST,
-        port=FASTAPI_PORT,
-        log_level="info"
-    )
+    try:
+        uvicorn.run(
+            app,
+            host=FASTAPI_HOST,
+            port=FASTAPI_PORT,
+            log_level="info"
+        )
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+    finally:
+        import sys
+        sys.exit(0)
+

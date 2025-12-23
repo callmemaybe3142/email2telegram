@@ -8,6 +8,7 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
+    ConversationHandler,
     filters
 )
 from config import TELEGRAM_BOT_TOKEN
@@ -15,6 +16,9 @@ from bot.handlers import (
     start_command,
     credits_command,
     add_email_command,
+    handle_email_input,
+    cancel_email_creation,
+    WAITING_FOR_EMAIL,
     my_emails_command,
     help_command,
     handle_payment_callback,
@@ -36,21 +40,36 @@ def create_bot_application():
     # Command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("credits", credits_command))
-    application.add_handler(CommandHandler("add_email", add_email_command))
     application.add_handler(CommandHandler("my_emails", my_emails_command))
     application.add_handler(CommandHandler("help", help_command))
+    
+    # Global cancel handler (for payment cancellation outside conversation)
+    application.add_handler(CommandHandler("cancel", cancel_email_creation))
+    
+    # Conversation handler for /add_email
+    add_email_conv = ConversationHandler(
+        entry_points=[CommandHandler("add_email", add_email_command)],
+        states={
+            WAITING_FOR_EMAIL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_email_input)
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_email_creation)],
+    )
+    application.add_handler(add_email_conv)
     
     # Callback query handlers
     application.add_handler(CallbackQueryHandler(
         handle_payment_callback,
         pattern="^buy_"
     ))
+    
     application.add_handler(CallbackQueryHandler(
         handle_admin_callback,
-        pattern="^(approve_|reject_)"
+        pattern="^(approve|reject)_"
     ))
     
-    # Message handlers
+    # Photo handler for payment receipts
     application.add_handler(MessageHandler(
         filters.PHOTO,
         handle_photo

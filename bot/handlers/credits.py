@@ -1,11 +1,13 @@
 """
 /credits command handler
-Check balance and purchase credits
+Display credit balance and purchase options
 """
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from config import CREDIT_PLANS
+from sqlalchemy import select
+from database import AsyncSessionLocal, User
+from config import CREDIT_PLANS, KPAY_PHONE, KPAY_NAME
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,12 +15,28 @@ logger = logging.getLogger(__name__)
 
 async def credits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    /credits command - Check balance and purchase credits
+    /credits command - Show credit balance and purchase options
     """
     user = update.effective_user
     
-    # TODO: Fetch actual credits from database
-    current_credits = 1  # Placeholder
+    async with AsyncSessionLocal() as session:
+        # Fetch user from database
+        result = await session.execute(
+            select(User).where(User.telegram_id == user.id)
+        )
+        db_user = result.scalar_one_or_none()
+        
+        if not db_user:
+            # User not registered
+            await update.message.reply_text(
+                "⚠️ Please use /start first to register.",
+                parse_mode="HTML"
+            )
+            logger.warning(f"User {user.id} not found in database")
+            return
+        
+        # Get current credits
+        current_credits = db_user.credits
     
     message = f"""
 💳 <b>Your Credit Balance</b>
@@ -26,6 +44,7 @@ async def credits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Current Credits: <b>{current_credits}</b> email(s)
 
 📦 <b>Available Plans:</b>
+
 """
     
     # Add plan details
@@ -48,8 +67,8 @@ Current Credits: <b>{current_credits}</b> email(s)
     
     await update.message.reply_text(
         message,
-        parse_mode="HTML",
-        reply_markup=reply_markup
+        reply_markup=reply_markup,
+        parse_mode="HTML"
     )
     
-    logger.info(f"User {user.id} checked credits")
+    logger.info(f"User {user.id} checked credits: {current_credits}")
