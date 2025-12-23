@@ -5,7 +5,6 @@ Display help information and available commands
 
 from telegram import Update
 from telegram.ext import ContextTypes
-from bot.keyboards import get_main_keyboard
 import logging
 
 logger = logging.getLogger(__name__)
@@ -52,8 +51,7 @@ Contact: @yoursupport
     
     await update.message.reply_text(
         help_text,
-        parse_mode="HTML",
-        reply_markup=get_main_keyboard()
+        parse_mode="HTML"
     )
     
     logger.info(f"User {update.effective_user.id} viewed help")

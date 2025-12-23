@@ -58,27 +58,6 @@ def create_bot_application():
     )
     application.add_handler(add_email_conv)
     
-    # Keyboard button handlers (text messages that match button labels)
-    application.add_handler(MessageHandler(
-        filters.Regex("^💳 Credits$"),
-        credits_command
-    ))
-    
-    application.add_handler(MessageHandler(
-        filters.Regex("^📧 Add Email$"),
-        add_email_command
-    ))
-    
-    application.add_handler(MessageHandler(
-        filters.Regex("^📬 My Emails$"),
-        my_emails_command
-    ))
-    
-    application.add_handler(MessageHandler(
-        filters.Regex("^❓ Help$"),
-        help_command
-    ))
-    
     # Callback query handlers
     application.add_handler(CallbackQueryHandler(
         handle_payment_callback,
