@@ -88,96 +88,168 @@ async def receive_email(request: Request):
         # Get the raw body
         body = await request.body()
         
-        print("\n" + "="*80)
-        print("📧 NEW EMAIL RECEIVED")
-        print("="*80)
+        logger.info("="*80)
+        logger.info("📧 NEW EMAIL RECEIVED")
+        logger.info("="*80)
         
         # Parse the email using mailparser
         mail = mailparser.parse_from_bytes(body)
         
-        # Extract all possible fields
-        print("\n📋 BASIC INFORMATION:")
-        print(f"From: {mail.from_}")
-        print(f"To: {mail.to}")
-        print(f"CC: {mail.cc}")
-        print(f"BCC: {mail.bcc}")
-        print(f"Subject: {mail.subject}")
-        print(f"Date: {mail.date}")
-        print(f"Message-ID: {mail.message_id}")
+        # Extract recipient email (first 'to' address)
+        recipient_email = None
+        if isinstance(mail.to, list) and len(mail.to) > 0:
+            recipient_email = mail.to[0][1] if isinstance(mail.to[0], tuple) else mail.to[0]
+        elif isinstance(mail.to, str):
+            recipient_email = mail.to
         
-        print("\n📝 EMAIL BODY:")
-        print(f"Plain Text Body:\n{mail.text_plain}")
-        print(f"\nHTML Body:\n{mail.text_html}")
+        if not recipient_email:
+            logger.error("No recipient email found in the message")
+            return JSONResponse(
+                status_code=200,
+                content={"status": "error", "message": "No recipient email found"}
+            )
         
-        print("\n📎 ATTACHMENTS:")
-        attachment_count = 0
+        recipient_email = recipient_email.lower().strip()
+        logger.info(f"Recipient: {recipient_email}")
+        
+        # Extract sender
+        sender_email = None
+        if isinstance(mail.from_, list) and len(mail.from_) > 0:
+            sender_email = mail.from_[0][1] if isinstance(mail.from_[0], tuple) else mail.from_[0]
+        elif isinstance(mail.from_, str):
+            sender_email = mail.from_
+        
+        sender_email = sender_email or "Unknown"
+        logger.info(f"Sender: {sender_email}")
+        logger.info(f"Subject: {mail.subject}")
+        
+        # Count attachments and extract them
+        attachments = []
         if mail.attachments:
-            attachment_count = len(mail.attachments)
-            for idx, attachment in enumerate(mail.attachments):
-                print(f"  [{idx+1}] Filename: {attachment.get('filename', 'N/A')}")
-                print(f"      Content-Type: {attachment.get('mail_content_type', 'N/A')}")
-                print(f"      Size: {len(attachment.get('payload', b''))} bytes")
-        else:
-            print("  No attachments")
+            for attachment in mail.attachments:
+                attachments.append({
+                    'filename': attachment.get('filename', 'unnamed'),
+                    'content_type': attachment.get('mail_content_type', 'application/octet-stream'),
+                    'payload': attachment.get('payload', b''),
+                    'size': len(attachment.get('payload', b''))
+                })
         
-        print("\n🔍 HEADERS:")
-        if mail.headers:
-            for key, value in mail.headers.items():
-                print(f"  {key}: {value}")
+        attachment_count = len(attachments)
         
-        print("\n📊 ADDITIONAL METADATA:")
-        print(f"Received: {mail.received}")
-        print(f"Reply-To: {mail.reply_to}")
-        print(f"Delivered-To: {mail.delivered_to}")
+        # Database lookup and notification
+        from database import AsyncSessionLocal, UserEmail, User, EmailLog
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
         
-        # TODO: Database integration
-        # 1. Look up receiver email in UserEmails table to find user_id
-        # 2. Log email in EmailLogs table
-        # 3. Get user's telegram_id from Users table
+        async with AsyncSessionLocal() as session:
+            # Find the user email record
+            result = await session.execute(
+                select(UserEmail)
+                .options(selectinload(UserEmail.user))
+                .where(UserEmail.email_address == recipient_email)
+            )
+            user_email = result.scalar_one_or_none()
+            
+            if not user_email:
+                logger.warning(f"Email address '{recipient_email}' not found in database")
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "error",
+                        "message": f"Email address '{recipient_email}' not registered"
+                    }
+                )
+            
+            # Get the user
+            db_user = user_email.user
+            if not db_user:
+                logger.error(f"User not found for email '{recipient_email}'")
+                return JSONResponse(
+                    status_code=200,
+                    content={"status": "error", "message": "User not found"}
+                )
+            
+            telegram_id = db_user.telegram_id
+            logger.info(f"Found user: {db_user.first_name} (Telegram ID: {telegram_id})")
+            
+            # Prepare email body (handle both string and list)
+            body_html = mail.text_html
+            if isinstance(body_html, list):
+                body_html = '\n'.join(body_html) if body_html else ""
+            elif body_html is None:
+                body_html = mail.text_plain or ""
+            
+            if isinstance(body_html, list):
+                body_html = '\n'.join(str(item) for item in body_html)
+            
+            body_html = str(body_html) if body_html else ""
+            
+            # Store email in database
+            email_log = EmailLog(
+                user_id=telegram_id,
+                sender=sender_email,
+                receiver=recipient_email,
+                subject=mail.subject or "No Subject",
+                body_html=body_html,
+                timestamp=datetime.utcnow()
+            )
+            session.add(email_log)
+            await session.commit()
+            
+            logger.info(f"Email logged to database (ID: {email_log.id})")
         
-        # For now, just prepare the email data
+        # Prepare email data for notification
+        body_plain = mail.text_plain
+        if isinstance(body_plain, list):
+            body_plain = '\n'.join(str(item) for item in body_plain) if body_plain else ""
+        elif body_plain is None:
+            body_plain = body_html or "No content"
+        
+        body_plain = str(body_plain) if body_plain else "No content"
+        
         email_data = {
-            'from': mail.from_,
-            'to': mail.to,
-            'subject': mail.subject,
-            'body_plain': mail.text_plain or '',
-            'body_html': mail.text_html or '',
+            'from': sender_email,
+            'to': recipient_email,
+            'subject': mail.subject or "No Subject",
+            'body_plain': body_plain,
+            'body_html': body_html,  # Add HTML body for better formatting
             'attachment_count': attachment_count,
-            'date': str(mail.date)
+            'attachments': attachments,
+            'date': str(mail.date) if mail.date else "Unknown"
         }
         
-        # TODO: Send notification to user via Telegram
-        # Example (once database is integrated):
-        # user_telegram_id = get_user_telegram_id_from_email(mail.to)
-        # if user_telegram_id and bot_app:
-        #     await send_email_notification(user_telegram_id, email_data, bot_app)
+        # Send Telegram notification
+        if bot_app:
+            try:
+                await send_email_notification(telegram_id, email_data, bot_app)
+                logger.info(f"✅ Telegram notification sent to user {telegram_id}")
+            except Exception as e:
+                logger.error(f"Failed to send Telegram notification: {e}")
+        else:
+            logger.warning("Bot application not available - notification not sent")
         
-        print("\n💬 TELEGRAM NOTIFICATION:")
-        print("(Will be sent once database integration is complete)")
-        
-        print("\n" + "="*80)
-        print("✅ EMAIL PROCESSING COMPLETE")
-        print("="*80 + "\n")
+        logger.info("="*80)
+        logger.info("✅ EMAIL PROCESSING COMPLETE")
+        logger.info("="*80)
         
         # Return success response to Cloudflare
         return JSONResponse(
             status_code=200,
             content={
                 "status": "success",
-                "message": "Email received and parsed successfully",
+                "message": "Email received and delivered",
                 "email_info": {
-                    "from": mail.from_,
-                    "to": mail.to,
+                    "from": sender_email,
+                    "to": recipient_email,
                     "subject": mail.subject,
-                    "date": str(mail.date),
-                    "has_attachments": attachment_count > 0
+                    "delivered_to_telegram": telegram_id
                 }
             }
         )
         
     except Exception as e:
-        print(f"\n❌ ERROR PROCESSING EMAIL: {str(e)}")
-        print(f"Error Type: {type(e).__name__}")
+        logger.error(f"❌ ERROR PROCESSING EMAIL: {str(e)}")
+        logger.error(f"Error Type: {type(e).__name__}")
         import traceback
         traceback.print_exc()
         
@@ -189,6 +261,7 @@ async def receive_email(request: Request):
                 "message": f"Error processing email: {str(e)}"
             }
         )
+
 
 
 if __name__ == "__main__":

@@ -53,7 +53,7 @@ Use /add_email to create your first email address!
             message = f"📬 <b>Your Email Addresses</b>\n\n"
             message += f"Total: <b>{len(user_emails)}</b> email(s)\n"
             message += f"Available Credits: <b>{db_user.credits}</b>\n\n"
-            message += "─" * 40 + "\n\n"
+            message += "─" * 20 + "\n"
             
             for idx, email in enumerate(user_emails, 1):
                 domain_name = email.domain.domain_name if email.domain else "Unknown"
@@ -71,7 +71,7 @@ Use /add_email to create your first email address!
                 
                 message += "\n"
             
-            message += "─" * 40 + "\n"
+            message += "─" * 20 + "\n"
             message += "\n💡 <b>Tip:</b> Use /add_email to create more addresses!"
     
     await update.message.reply_text(message, parse_mode="HTML")
